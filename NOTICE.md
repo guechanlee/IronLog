@@ -17,8 +17,9 @@ not otherwise limit the license.
 The muscle outlines the body maps are drawn from (`frontend/src/lib/body-paths.js`) are derived
 from [**MuscleMap**](https://github.com/melihcolpan/MuscleMap) by Melih Colpan, used under the
 **MIT License** and reproduced below. MuscleMap ships its path data as Swift source rather than
-`.svg` files; the paths were converted to a JSON module, its sub-group shapes were dropped, and
-nothing else about the artwork was changed.
+`.svg` files; the paths were converted to a JSON module (`frontend/scripts/build-body-paths.mjs`)
+with the sub-region shapes (front deltoid, upper abs, inner quad, ...) kept in a list of their own, and
+nothing else about the artwork was changed. The version used is MuscleMap commit `d53ddf4`.
 
 ```
 MIT License

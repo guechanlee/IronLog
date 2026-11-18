@@ -5,12 +5,13 @@ import { activeProfile, exAvailable } from '../lib/equipment.js'
 import { bestWeightFor } from '../lib/history.js'
 import { fmtNum, exCount } from '../lib/format.js'
 import { MUSCLES, MUSCLE_NAME, musclesOf } from '../lib/muscles.js'
+import { REGIONS_OF, exercisesForRegion, parentOf, regionName } from '../lib/muscle-regions.js'
 import { t, exerciseNameFor, exerciseNameClass } from '../lib/i18n.js'
 import BodyMap from './BodyMap.jsx'
 import { Thumb } from './Media.jsx'
 import Icon from './Icon.jsx'
 import ExerciseViewToggle from './ExerciseViewToggle.jsx'
-import { Button } from './ui.jsx'
+import { Button, Segmented } from './ui.jsx'
 import { useAutoMore } from '../lib/use-auto-more.js'
 import { favIds, isFav, sortFavouritesFirst } from '../lib/favourites.js'
 
@@ -20,7 +21,9 @@ const FAV = '☆'
 // a result into a selection; without it the explorer behaves like the normal Library.
 export default function MuscleExplorer({ onPick, onDetail, onPlan, pickIcon = 'plus', initial = null }) {
   const S = useStore(s => s.S)
+  const update = useStore(s => s.update)
   const [selected, setSelected] = useState(initial)
+  const [hover, setHover] = useState(null)   // the part under the pointer, named under the map
   const [q, setQ] = useState('')
   const [bp, setBp] = useState('')
   const [eq, setEq] = useState('')
@@ -38,7 +41,12 @@ export default function MuscleExplorer({ onPick, onDetail, onPlan, pickIcon = 'p
     catalog.filter(e => musclesOf(e)[m]).length
   ])), [catalog])
   const pick = muscle => { setSelected(muscle === selected ? null : muscle); setEq(''); setShown(40) }
-  const targeted = selected ? catalog.filter(e => musclesOf(e)[selected]) : []
+  // A muscle, or one part of it (lib/muscle-regions.js): the part's own exercises, or the whole muscle's
+  // when the catalogue cannot tell that part apart (`approx`, said under the title).
+  const { list: targeted, approx } = useMemo(() => (selected ? exercisesForRegion(catalog, selected) : { list: [], approx: false }), [catalog, selected])
+  const parent = selected ? parentOf(selected) : null
+  const regionIds = parent ? REGIONS_OF[parent] || [] : []
+  const regionCounts = useMemo(() => Object.fromEntries(regionIds.map(id => [id, exercisesForRegion(catalog, id).list.length])), [catalog, parent])   // eslint-disable-line react-hooks/exhaustive-deps
   // The picker's Favourites chip (#669), here for the chosen muscle: '☆' in place of a body part.
   const favOn = bp === FAV
   const favHere = targeted.filter(e => isFav(S, e.id)).length
@@ -61,22 +69,39 @@ export default function MuscleExplorer({ onPick, onDetail, onPlan, pickIcon = 'p
       </button>
     </div>}
     <div className="card">
-      <BodyMap className="tappable" body={S.body} selected={selected} onMuscle={pick} />
+      {/* Man or woman: the same setting as Settings, Body diagram, so the other maps follow. */}
+      <div className="bm-gender">
+        <Segmented options={[{ value: 'male', label: t('Male') }, { value: 'female', label: t('Female') }]}
+          value={S.body === 'female' ? 'female' : 'male'} onChange={v => update(s => { s.body = v })} />
+      </div>
+      <div className="bm-hover" aria-live="polite">{hover ? t(regionName(hover, MUSCLE_NAME)) : (selected ? t(regionName(selected, MUSCLE_NAME)) : '')}</div>
+      <BodyMap className="tappable" detail body={S.body} selected={selected} onMuscle={pick} onHover={setHover} />
       <div className="chips" style={{ marginTop: 10 }}>
-        {MUSCLES.map(m => <button key={m} className={'chip' + (selected === m ? ' on' : '')}
-          aria-pressed={selected === m} onClick={() => pick(m)}>
+        {MUSCLES.map(m => <button key={m} className={'chip' + (parent === m ? ' on' : '')}
+          aria-pressed={parent === m} onClick={() => pick(m)}>
           {t(MUSCLE_NAME[m])} <span className="dim">{counts[m]}</span>
         </button>)}
       </div>
+      {/* The parts of the chosen muscle, for the ones the map shows on one side only. */}
+      {regionIds.length > 0 && <div className="chips" style={{ marginTop: 8 }}>
+        <button className={'chip nocap' + (selected === parent ? ' on' : '')} aria-pressed={selected === parent} onClick={() => { setSelected(parent); setEq(''); setShown(40) }}>
+          {t('All {0}', t(MUSCLE_NAME[parent]))} <span className="dim">{counts[parent]}</span>
+        </button>
+        {regionIds.map(id => <button key={id} className={'chip' + (selected === id ? ' on' : '')} aria-pressed={selected === id}
+          onClick={() => { setSelected(id); setEq(''); setShown(40) }}>
+          {t(regionName(id, MUSCLE_NAME))} <span className="dim">{regionCounts[id]}</span>
+        </button>)}
+      </div>}
     </div>
 
     {!selected && onPick && <div className="empty"><div className="ico"><Icon name="figureStrength" /></div>{t('Choose a muscle to see exercises that train it.')}</div>}
 
     {selected && <>
       <div className="row between" style={{ margin: '2px 0 10px' }}>
-        <h4 className="sec" style={{ margin: 0 }}>{t('Exercises for {0}', t(MUSCLE_NAME[selected]))}</h4>
+        <h4 className="sec" style={{ margin: 0 }}>{t('Exercises for {0}', t(regionName(selected, MUSCLE_NAME)))}</h4>
         <Button size="sm" variant="ghost" onClick={() => pick(selected)}>{t('Clear selection')}</Button>
       </div>
+      {approx && <div className="small dim" style={{ margin: '-4px 2px 10px' }}>{t('The catalogue does not tell this part apart, so these are the exercises for the whole {0}.', t(MUSCLE_NAME[parent]))}</div>}
       <div className="search-row" style={{ marginBottom: 10 }}><div className={'search' + (narrowed ? ' has-count' : '') + (q ? ' has-clear' : '')}><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
         <input className="input" placeholder={t('Search…')} value={q} onChange={e => { setQ(e.target.value); setShown(40) }} />
         {narrowed && <span className="search-count" role="status" aria-label={exCount(exercises.length)}>{fmtNum(exercises.length)}</span>}
@@ -97,7 +122,7 @@ export default function MuscleExplorer({ onPick, onDetail, onPlan, pickIcon = 'p
       <div className={'list' + (S.exerciseView === 'cards' ? ' ex-grid' : '')}>
         {exercises.slice(0, shown).map(e => {
           const best = bestWeightFor(S, e.id)
-          const primary = musclesOf(e)[selected] === 1
+          const primary = musclesOf(e)[parent] === 1
           // The name is the row's button, stretched over it; Plan is its sibling (card dismiss pass).
           return <div key={e.id} className="item tap-host">
             <Thumb ex={e} />

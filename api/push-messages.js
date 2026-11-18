@@ -1,5 +1,10 @@
 import { NUDGE_COPY } from './nudge-copy.js';
 import { lineIndex } from './nudge.js';
+import { PROTEIN_COPY } from './protein-copy.js';
+import { WORKOUT_CHECK_COPY } from './workout-check-copy.js';
+import { NUTRIENT_COPY } from './nutrition-copy.js';
+import { QUOTE_TITLE } from './quote-copy.js';
+import { quoteFor } from './quote.js';
 
 const COPY = {
   en: {
@@ -78,4 +83,44 @@ export function nudgePush(lang, tone, routine, iso) {
   const line = copy.lines[lineIndex(iso, copy.lines.length)];
   const name = routine?.name || 'openGym';
   return { title: copy.title, body: line.replace('{0}', () => name), tag: 'nudge' };
+}
+
+// The protein reminder (protein.js): the slot's greeting as the title, what is still to go as the
+// body. One tag per slot, so a later push replaces an earlier one still on the screen.
+const proteinCopyFor = lang => {
+  if (lang === 'de-CH') {
+    const ch = s => s.replace(/ß/g, 'ss');
+    const de = PROTEIN_COPY.de;
+    return { titles: Object.fromEntries(Object.entries(de.titles).map(([k, v]) => [k, ch(v)])), body: ch(de.body) };
+  }
+  return PROTEIN_COPY[lang] || PROTEIN_COPY.en;
+};
+export function proteinPush(lang, slot, left, goal) {
+  const copy = proteinCopyFor(lang);
+  return {
+    title: copy.titles[slot] || copy.titles.evening,
+    body: copy.body.replace('{0}', () => String(left)).replace('{1}', () => String(goal)),
+    tag: 'protein-' + slot,
+  };
+}
+
+// The nutrient reminder (nutrition.js nutrientShortfalls): the slot's greeting, then each short nutrient with the
+// percent of its goal still to go ("Protein 40% short · Carbs 25% short").
+export function nutrientPush(lang, slot, items) {
+  const greet = proteinCopyFor(lang);
+  const c = NUTRIENT_COPY[lang] || NUTRIENT_COPY.en;
+  const body = items.map(x => c.short.replace('{n}', () => c.names[x.id]).replace('{0}', () => String(x.pct))).join(' · ');
+  return { title: greet.titles[slot] || greet.titles.evening, body, tag: 'protein-' + slot };
+}
+
+// The morning line (quote.js).
+export function quotePush(lang, iso) {
+  return { title: QUOTE_TITLE[lang] || QUOTE_TITLE.en, body: quoteFor(lang, iso), tag: 'quote' };
+}
+
+// The daily workout check (workout-check.js): one line, no routine to name.
+export function workoutCheckPush(lang) {
+  let c = WORKOUT_CHECK_COPY[lang] || WORKOUT_CHECK_COPY.en;
+  if (lang === 'de-CH') { const ch = x => x.replace(/ß/g, 'ss'); c = { title: ch(WORKOUT_CHECK_COPY.de.title), body: ch(WORKOUT_CHECK_COPY.de.body) }; }
+  return { title: c.title, body: c.body, tag: 'workout-check' };
 }

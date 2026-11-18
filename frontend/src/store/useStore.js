@@ -90,13 +90,33 @@ const gainedWorkoutMedia = (prev, next) => {
 }
 export const DEF = {
   unit: 'kg', restSec: 90, restPauseSec: 15, sound: true, soundOnSilent: false, vibrateOnSilent: false, timerFlash: false, timedSetOvertime: false, keepAwake: true, lang: 'en',
-  theme: 'dark', accent: 'lime', body: 'male', targetW: null,
+  theme: 'dark', accent: 'ember', body: 'male', targetW: null,
   // The weekly-rate corridor on the body-weight card (#759, lib/bodyweight.js rateCorridor).
   rateGoal: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
   // A note per day off (#261): { [iso]: { tag, text, _ts } } (lib/day-notes.js). A noted day is
   // excused from the missed-day nudge; each day merges on its own stamp (lib/sync-merge.js).
   dayNotes: {},
+  // Protein eaten per day, in grams: { [iso]: { g, _ts } } (lib/protein.js). The goal is 1.8 g per kg of
+  // the latest weigh-in; each day merges on its own stamp like dayNotes (lib/sync-merge.js).
+  proteinLog: {},
+  // The protein goal in grams when the person sets their own (lib/protein.js); null follows the
+  // recommendation of 1.8 to 2 g per kg of the latest weigh-in.
+  proteinGoalG: null,
+  macroGoals: { carbs: null, fat: null },
+  // What the body burns a day, worked out in lib/metabolism.js from these and the latest weigh-in:
+  // sex ('male' | 'female'), age, height in cm, activity (a key of ACTIVITY), an optional body-fat
+  // percentage, the goal ('lose' | 'maintain' | 'gain') and a calorie target of your own that wins.
+  metabolism: { sex: null, age: null, heightCm: null, activity: 'moderate', bodyFatPct: null, goal: 'maintain', manualKcal: null },
+  // Calories eaten per day: { [iso]: { kcal, _ts } }, a stamped map like proteinLog. Level 2 of the estimate uses it.
+  calorieLog: {},
+  // Protein push reminders (api/protein.js): morning, lunch and evening, only while today's goal is
+  // short. `tz` is the zone they are timed in, re-stamped on load like the workout reminder's.
+  proteinReminder: { on: false, tz: null },
+  // The daily workout check (api/workout-check.js): a push at 20:30 on a day with no workout logged,
+  // planned or not. Own switch and zone, re-stamped on load like the others.
+  workoutCheck: { on: false, tz: null },
+  quoteReminder: { on: false, tz: null },
   // Body measurements (#82, #699): one check-in per day; canonical cm, kg or % according to
   // the field's unit (lib/measurements.js); merged like weigh-ins (lib/sync-merge.js).
   measurements: [], measurementEnabled: null, customMeasurements: [],
@@ -133,7 +153,7 @@ export const DEF = {
   // How the Library, the exercise picker and the muscle explorer show exercises — 'list' (rows
   // with a small thumbnail) or 'cards' (a grid of pictures with the name underneath). Switched
   // by the button in those headers (ExerciseViewToggle); older profiles overlay onto the list.
-  exerciseView: 'list',
+  exerciseView: 'cards',
   // Which controls the workout screen shows besides the sets themselves. The default is the
   // lean layout: one "more" button per exercise and a menu on each set number. Every switch
   // brings one of the old always-visible button groups back (Settings → During a workout).
@@ -498,7 +518,7 @@ export const useStore = create((set, get) => {
        'local'   no server: a phone in local mode, a guest, nobody signed in
        'auth'    the server refuses this device (a 401), or the phone has lost its pairing
        'offline' the server could not be reached at all (no network, DNS, a timeout)
-       'error'   it answered with a failure: 5xx, 403, 413, a page that is not openGym's
+       'error'   it answered with a failure: 5xx, 403, 413, a page that is not IronLog's
        'held'    signed in, but the question about this device's own entries is still open
        'pending' reachable, and a change is still waiting to reach it
        'ok'      this device holds what the server holds
@@ -2134,6 +2154,15 @@ export const useStore = create((set, get) => {
           const tz = localTZ()
           if (get().S.reminder?.on && get().S.reminder.tz !== tz) {
             get().update(s => { s.reminder = { ...s.reminder, tz } })
+          }
+          if (get().S.proteinReminder?.on && get().S.proteinReminder.tz !== tz) {
+            get().update(s => { s.proteinReminder = { ...s.proteinReminder, tz } })
+          }
+          if (get().S.workoutCheck?.on && get().S.workoutCheck.tz !== tz) {
+            get().update(s => { s.workoutCheck = { ...s.workoutCheck, tz } })
+          }
+          if (get().S.quoteReminder?.on && get().S.quoteReminder.tz !== tz) {
+            get().update(s => { s.quoteReminder = { ...s.quoteReminder, tz } })
           }
         }
         // Closed with the sign-in's question still open: asked again once the app is up (see the

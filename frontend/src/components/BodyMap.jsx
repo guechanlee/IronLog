@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { MUSCLES, INERT, MUSCLE_NAME, levelsOf } from '../lib/muscles.js'
 import { t } from '../lib/i18n.js'
+import { REGIONS, detailId, parentOf, regionName } from '../lib/muscle-regions.js'
 
 // Front and back views of a body, each muscle shaded by how hard it was worked.
 //
@@ -26,30 +27,47 @@ function useBodyPaths() {
   return paths
 }
 
-function View({ view, levels, onMuscle, selected }) {
+function View({ view, levels, onMuscle, selected, detail, onHover }) {
   const activate = (event, slug) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     if (event.key === ' ') event.preventDefault()
     onMuscle(slug)
   }
+  // In the explorer (`detail`) the sub-regions are drawn over their muscle and a tap names the part
+  // (lib/muscle-regions.js). A muscle is lit when it is the choice, or when the choice is its whole
+  // muscle; a region only when it is the choice.
+  const idOf = slug => (detail ? detailId(slug) : slug)
+  const lit = slug => {
+    const id = idOf(slug)
+    return selected === id || (detail && !!selected && !Object.hasOwn(REGIONS, selected) && Object.hasOwn(REGIONS, id) && REGIONS[id].parent === selected)
+  }
+  const label = slug => t(detail ? regionName(idOf(slug), MUSCLE_NAME) : MUSCLE_NAME[slug])
+  const shape = (slug, d, i) => {
+    const id = idOf(slug)
+    return <path
+      key={slug + i}
+      className={'bm-m l' + (levels[slug] || 0) + (lit(slug) ? ' sel' : '') + (detail && !MUSCLES.includes(slug) ? ' bm-sub' : '')}
+      d={d}
+      onClick={onMuscle ? () => onMuscle(id) : undefined}
+      onKeyDown={onMuscle ? event => activate(event, id) : undefined}
+      onMouseEnter={onHover ? () => onHover(id) : undefined}
+      onMouseLeave={onHover ? () => onHover(null) : undefined}
+      onFocus={onHover ? () => onHover(id) : undefined}
+      onBlur={onHover ? () => onHover(null) : undefined}
+      role={onMuscle ? 'button' : undefined}
+      tabIndex={onMuscle ? 0 : undefined}
+      aria-label={onMuscle ? label(slug) : undefined}
+      aria-pressed={onMuscle ? lit(slug) : undefined}
+    >
+      <title>{label(slug)}</title>
+    </path>
+  }
   return (
     <svg className="bm-v" viewBox={view.vb} role={onMuscle ? 'group' : 'img'}>
       {INERT.map(slug => (view.p[slug] || []).map((d, i) =>
         <path key={slug + i} className="bm-sil" d={d} />))}
-      {MUSCLES.map(slug => (view.p[slug] || []).map((d, i) =>
-        <path
-          key={slug + i}
-          className={'bm-m l' + (levels[slug] || 0) + (selected === slug ? ' sel' : '')}
-          d={d}
-          onClick={onMuscle ? () => onMuscle(slug) : undefined}
-          onKeyDown={onMuscle ? event => activate(event, slug) : undefined}
-          role={onMuscle ? 'button' : undefined}
-          tabIndex={onMuscle ? 0 : undefined}
-          aria-label={onMuscle ? t(MUSCLE_NAME[slug]) : undefined}
-          aria-pressed={onMuscle ? selected === slug : undefined}
-        >
-          <title>{t(MUSCLE_NAME[slug])}</title>
-        </path>))}
+      {MUSCLES.map(slug => (view.p[slug] || []).map((d, i) => shape(slug, d, i)))}
+      {detail && Object.entries(view.s || {}).map(([slug, paths]) => paths.map((d, i) => shape(slug, d, i)))}
     </svg>
   )
 }
@@ -61,16 +79,19 @@ function View({ view, levels, onMuscle, selected }) {
  * `{ at, level, exclusive? }` `thresholds` for a fixed absolute scale (recovery views use this
  * to keep their semantic bands stable); omitting it preserves the balance behavior. `levels`
  * hands over ready-made steps instead (the live session map, lib/muscles.js sessionLevels).
+ * `detail` is the explorer's map: the sub-regions of a muscle (front, side and rear shoulder, upper and
+ * lower chest …) are drawn over it, `onMuscle` gets the region's id (lib/muscle-regions.js), and
+ * `onHover` the id under the pointer (null when it leaves).
  */
-export default function BodyMap({ load = {}, thresholds, levels: given, body = 'male', onMuscle, selected, className = '' }) {
+export default function BodyMap({ load = {}, thresholds, levels: given, body = 'male', onMuscle, selected, className = '', detail = false, onHover }) {
   const paths = useBodyPaths()
   const levels = given || levelsOf(load, thresholds)
   const g = paths && (paths[body] || paths.male)
   return (
-    <div className={'bodymap ' + className}>
+    <div className={'bodymap ' + className + (detail ? ' bm-detail' : '')}>
       {g ? <>
-        <View view={g.front} levels={levels} onMuscle={onMuscle} selected={selected} />
-        <View view={g.back} levels={levels} onMuscle={onMuscle} selected={selected} />
+        <View view={g.front} levels={levels} onMuscle={onMuscle} selected={selected} detail={detail} onHover={onHover} />
+        <View view={g.back} levels={levels} onMuscle={onMuscle} selected={selected} detail={detail} onHover={onHover} />
       </> : <div className="bm-ph" aria-hidden="true" />}
     </div>
   )

@@ -47,7 +47,6 @@ All settings live in `.env`; [`.env.example`](../.env.example) explains each one
 | [scripts/](../scripts/README.md) | You want to know which build script does what |
 | [CLAUDE.md](../CLAUDE.md) | The same project context in the form Claude Code sessions start from |
 | [HTTP API](API.md) | You're touching routes; the OpenAPI spec is the source of truth |
-| [Roadmap](../ROADMAP.md) | You want to know what's planned and where your idea fits |
 | [Changelog](../CHANGELOG.md) | You want to know what changed in a release |
 
 Design notes for specific features, kept next to the code they describe:

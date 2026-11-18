@@ -23,7 +23,7 @@ export const PAGES = {
   look: { title: 'Look & Home', icon: 'palette', tint: 'var(--purple)' },
   coach: { title: 'AI Coach', icon: 'sparkles', tint: 'var(--green)', mod: 'coach' },
   watch: { title: 'Apple Watch', icon: 'watch', tint: 'var(--grey)', mod: 'watch' },
-  // Settings → Integrations (v1.4.4): the directory of what openGym talks to (views/Integrations.jsx).
+  // Settings → Integrations (v1.4.4): the directory of what IronLog talks to (views/Integrations.jsx).
   integrations: { title: 'Integrations', icon: 'plug', tint: 'var(--indigo)', kw: 'integrations connect apps services webhook webhooks home assistant n8n ntfy node-red zapier automation garmin fitbit strava sync api mcp' },
   zepp: { title: 'Zepp OS watch', icon: 'watch', tint: 'var(--orange)', mod: 'watch' },
   data: { title: 'Data & backup', icon: 'folder', tint: 'var(--blue)' },
@@ -59,7 +59,7 @@ export function pageVisible(page, ctx) {
   if (page === 'coach') return !!ctx.mobile
   // The iPhone app only: the watch app ships inside it.
   if (page === 'watch') return !!ctx.ios
-  // Signed in to a server: a Zepp OS watch reaches openGym through it (lib/watch-relay.js).
+  // Signed in to a server: a Zepp OS watch reaches IronLog through it (lib/watch-relay.js).
   if (page === 'zepp') return !!ctx.user && !ctx.demo
   // The phone app only: a browser cannot watch where you are with the page closed.
   if (page === 'gym' || page === 'gym-find' || page === 'gym-edit') return !!ctx.mobile && ctx.gymReminder !== false
@@ -137,6 +137,8 @@ export const SEARCH = [
   // Reminders
   { page: 'reminders', title: PUSH, icon: 'bell', tint: 'var(--red)', kw: 'push notification alerts', when: c => !c.mobile && !!c.user && c.pushOK },
   { page: 'reminders', title: 'Workout day reminder', icon: 'calendar', tint: 'var(--orange)', kw: 'reminder notification remind', when: remind, via: PUSH },
+  { page: 'reminders', title: 'Protein reminders', icon: 'arm', tint: 'var(--orange)', kw: 'protein reminder notification morning lunch evening dinner food eat goal', when: c => !c.mobile && !!c.user && c.pushOK, via: PUSH },
+  { page: 'reminders', title: 'Daily workout check', icon: 'calendar', tint: 'var(--teal)', kw: 'workout check daily evening skipped missed no workout today notification remind', when: c => !c.mobile && !!c.user && c.pushOK, via: PUSH },
   { page: 'reminders', title: 'Reminder time', icon: 'clock', tint: 'var(--purple)', kw: 'reminder time clock hour when', when: c => remind(c) && c.reminderOn, via: PUSH },
   { page: 'reminders', title: 'Nudge me when I skip a planned workout', icon: 'bell', tint: 'var(--red)', kw: 'nudge skip missed motivation', when: c => remind(c) && c.reminderOn, via: PUSH },
   { page: 'reminders', title: 'Nudge tone', icon: 'chat', tint: 'var(--blue)', kw: 'nudge tone friendly guilt drill sergeant', opts: ['Friendly', 'Guilt trip', 'Drill sergeant'], when: c => remind(c) && c.reminderOn && c.nudge, via: PUSH },
@@ -216,7 +218,6 @@ export const SEARCH = [
   { page: 'integrations', mod: 'health', title: 'Renpho', icon: 'scale', tint: 'var(--grey)', kw: 'renpho scale weight body' },
   // About & updates
   { page: 'about', title: 'Check for updates', icon: 'download', tint: 'var(--green)', kw: 'update apk android version', when: c => c.mobile && c.android },
-  { page: 'about', title: 'Get the Android app', icon: 'download', tint: 'var(--green)', kw: 'apk android download app', when: c => !c.mobile },
   { page: 'about', title: 'Show the tour again', icon: 'lightbulb', tint: 'var(--yellow)', kw: 'tour tutorials intro introduction tutorial walkthrough guide help onboarding how to start' },
   { page: 'about', title: 'Build your first plan', icon: 'calendar', tint: 'var(--yellow)', kw: 'tutorial guide routine plan create first help how to' },
   { page: 'about', title: 'Create your own exercise', icon: 'plusCircle', tint: 'var(--yellow)', kw: 'tutorial guide custom exercise own new help how to' },

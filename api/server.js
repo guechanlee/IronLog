@@ -16,7 +16,11 @@ import * as coachJobs from './coach/jobs.js';
 import { coachRoutes } from './coach/routes.js';
 import { startCadence } from './coach/cadence.js';
 import { startWarmup } from './coach/warmup.js';
-import { dayReminderPush, nudgePush, restTimerPush, testPush } from './push-messages.js';
+import { dayReminderPush, nudgePush, nutrientPush, proteinPush, quotePush, restTimerPush, testPush, workoutCheckPush } from './push-messages.js';
+import { workoutCheckOpen, workoutCheckOwed } from './workout-check.js';
+import { quoteOpen } from './quote.js';
+import { proteinOwed, slotsOpen } from './protein.js';
+import { nutrientShortfalls } from './nutrition.js';
 import { verifyError, isMisconfigured, originHint } from './verify-error.js';
 import {
   hashPassword, verifyPassword, needsRehash, passwordProblem, passwordLength, nameKey, BusyError,
@@ -390,7 +394,7 @@ function userNow(tz) {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: tz, hour12: false,
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-    }).formatToParts(new Date());
+    }).formatToParts(new Date(Date.now()));   // through Date.now(), so the tests' clock moves it
     const g = t => parts.find(p => p.type === t)?.value;
     const date = `${g('year')}-${g('month')}-${g('day')}`;
     // Weekday is derived from the zone's own date, not the server's — a Sunday-evening review
@@ -462,6 +466,58 @@ function nudgeTick(user, S, now) {
   saveDb();
   sendPush(user.id, nudgePush(S.lang, toneOf(S.reminder), routine, now.date));
 }
+// Nutrient reminders (protein.js, nutrition.js): morning, lunch and evening, each sent once per local date and only
+// while protein (or, with a profile, carbs or fat) is still short. Independent of the workout reminder: it needs its own switch
+// and zone (`proteinReminder`), a push subscription, and a weigh-in to work the goal out from.
+// The slots sent today are written to db.json (`user.proteinSent`) before the send, so a restart or
+// the next tick cannot repeat one. A state is only read while a slot is open.
+function proteinTick(user, sum) {
+  const now = userNow(sum.prot.tz || 'UTC');
+  if (!now) return;
+  const sent = user.proteinSent?.d === now.date ? user.proteinSent.slots : [];
+  const open = slotsOpen(now.hhmm, REMINDER_WINDOW_MIN).filter(id => !sent.includes(id));
+  if (!open.length) return;
+  const S = readStateCached(user.id);
+  if (!S?.proteinReminder?.on) return;
+  // What is short: protein always, carbs and fat too once the calorie target is known (nutrition.js). A person
+  // with only a weigh-in gets the protein line in grams; with a profile, each short nutrient as a percent.
+  const owed = proteinOwed(S, now.date);
+  const short = nutrientShortfalls(S, now.date);
+  if (!owed && !short) return;   // goals reached (or within 10%), or no weigh-in yet: nothing to remind about
+  const slot = open[0];
+  console.log('protein reminder firing', user.id, slot);
+  user.proteinSent = { d: now.date, slots: [...sent, slot] };
+  saveDb();
+  sendPush(user.id, short?.macros ? nutrientPush(S.lang, slot, short.items) : proteinPush(S.lang, slot, owed.left, owed.goal));
+}
+// The daily workout check (workout-check.js): 20:30 on the user's clock, once per local date
+// (`user.lastWorkoutCheck`), when nothing has been logged today. It has its own switch and zone
+// (`workoutCheck`), so it works without the workout reminder. A planned-day nudge that already went
+// out today (`user.lastNudge`) covers the evening, and nothing is sent while a session is on screen.
+function workoutCheckTick(user, sum) {
+  const now = userNow(sum.chk.tz || 'UTC');
+  if (!now || user.lastWorkoutCheck === now.date || user.lastNudge === now.date) return;
+  if (!workoutCheckOpen(now.hhmm, REMINDER_WINDOW_MIN)) return;
+  const S = readStateCached(user.id);
+  if (!S?.workoutCheck?.on) return;
+  if (livePresence(user.id)) return;
+  if (!workoutCheckOwed(S, now.date)) return;
+  console.log('workout check firing', user.id);
+  user.lastWorkoutCheck = now.date;
+  saveDb();
+  sendPush(user.id, workoutCheckPush(S.lang));
+}
+// The morning line (quote.js): 07:30 on the user's clock, once per local date (`user.lastQuote`), written
+// to db.json before the send. Opt-in with its own switch and zone (`quoteReminder`); no state is read.
+function quoteTick(user, sum) {
+  const now = userNow(sum.quo.tz || 'UTC');
+  if (!now || user.lastQuote === now.date) return;
+  if (!quoteOpen(now.hhmm, REMINDER_WINDOW_MIN)) return;
+  console.log('quote firing', user.id);
+  user.lastQuote = now.date;
+  saveDb();
+  sendPush(user.id, quotePush(sum.lang, now.date));
+}
 // What the tick needs to know before it reads a whole state: the reminder settings and whether
 // the Coach was agreed to, kept per user against the state file's mtime and size. The state cache
 // above holds at most STATE_CACHE_MAX documents, and the tick walks every subscribed user in the
@@ -480,6 +536,10 @@ function stateSummary(uid) {
   const sum = {
     mtimeMs: st.mtimeMs, size: st.size,
     rem: r && typeof r === 'object' ? { on: !!r.on, tz: r.tz, time: r.time, nudge: !!r.nudge } : { on: false },
+    chk: S?.workoutCheck && typeof S.workoutCheck === 'object' ? { on: !!S.workoutCheck.on, tz: S.workoutCheck.tz } : { on: false },
+    prot: S?.proteinReminder && typeof S.proteinReminder === 'object' ? { on: !!S.proteinReminder.on, tz: S.proteinReminder.tz } : { on: false },
+    quo: S?.quoteReminder && typeof S.quoteReminder === 'object' ? { on: !!S.quoteReminder.on, tz: S.quoteReminder.tz } : { on: false },
+    lang: S?.lang,
     consent: !!S?.coach?.consent?.agreedAt,
     settled: '',   // a local date the reminder was found to owe nothing on, for this file
     wrapped: wrappedSummary(S),   // the December push (wrapped.js): a flag, a year, a few years
@@ -509,6 +569,9 @@ setInterval(() => {
     try {
       const sum = stateSummary(user.id);
       if (wrappedYear && sum && user.wrappedPush !== wrappedYear) wrappedTick(user, sum, wrappedYear);
+      if (sum?.prot.on) proteinTick(user, sum);
+      if (sum?.chk.on) workoutCheckTick(user, sum);
+      if (sum?.quo.on) quoteTick(user, sum);
       if (!sum?.rem.on) continue;
       const now = userNow(sum.rem.tz || 'UTC');
       if (!now) continue;

@@ -155,7 +155,14 @@ export async function decodePayload(payload) {
   return data
 }
 
-export const linkFor = payload => `${LINK_BASE}#${payload}`
+// A browser gets a link back to the app it is running in (the hash route the reader already takes:
+// <origin>/#/r/<payload>), so sharing never depends on someone else's website. The phone shells
+// have no address of their own and keep the fixed base.
+export const linkFor = payload => {
+  const loc = typeof location !== 'undefined' ? location : null
+  if (loc && /^https?:$/.test(loc.protocol) && loc.host) return `${loc.origin}${loc.pathname.replace(/index\.html$/, '')}#/r/${payload}`
+  return `${LINK_BASE}#${payload}`
+}
 
 /**
  * The link for a routine, or `{ tooLong: true }` when it would pass MAX_LINK (the caller shares a

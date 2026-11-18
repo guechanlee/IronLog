@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 // List or cards (S.exerciseView): one button beside the search field switches every exercise
 // list — the Library, the add-exercise picker and the muscle explorer — between rows with a 50px
-// thumbnail and a grid of picture cards with the name under the picture. The list stays the default, so a profile that
-// never touches the button sees exactly what it saw before.
+// thumbnail and a grid of picture cards with the name under the picture. A new profile starts on the cards
+// (IronLog's default); a profile saved before the setting existed keeps the list it always had.
 import React, { act } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -41,12 +41,19 @@ const setView = v => useStore.setState(s => ({ S: { ...s.S, exerciseView: v } })
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   useUI.setState({ sheets: [], toastMsg: '' })
-  useStore.setState({ S: structuredClone(DEF), user: null })
+  // The tests below start from the list, the way a profile that chose it looks; the first test pins what a new one gets.
+  useStore.setState({ S: { ...structuredClone(DEF), exerciseView: 'list' }, user: null })
   document.body.innerHTML = ''
 })
 afterEach(() => { act(() => { mounted.splice(0).forEach(root => root.unmount()) }) })
 
 describe('exercise list or cards', () => {
+  it('a new profile starts on the cards', () => {
+    expect(DEF.exerciseView).toBe('cards')
+    useStore.setState({ S: structuredClone(DEF) })
+    expect(isCards(render(<Library />))).toBe(true)
+  })
+
   it('Library: a list until the button beside the search turns the cards on, and back', () => {
     const host = render(<Library />)
     expect(isCards(host)).toBe(false)

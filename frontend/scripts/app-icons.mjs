@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* The alternate home-screen icons (Settings → Look & Home → App icon), drawn from
- * src/lib/app-icon-variants.js and the dumbbell in resources/icon.svg.
+ * src/lib/app-icon-variants.js and the glyph in resources/icon.svg.
  *
- * The glyph is five rectangles, so this draws them itself (4x4 to 8x8 samples per pixel for the
+ * The glyph is three rectangles and one open ring, so this draws them itself (4x4 to 8x8 samples per pixel for the
  * edges) and writes the PNGs with node:zlib: no sharp or resvg to install, and the same bytes on
  * every machine, which the test checks. A variant with `art` (Halloween) is a hand-made SVG
  * instead, drawn by the small renderer below (rect, circle, line, polyline, polygon, one radial
@@ -32,13 +32,52 @@ export const DENSITIES = { ldpi: 0.75, mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, 
 export const PREVIEW = 112
 export const IOS_SIZE = 1024
 
-/** The glyph's rectangles, in the 512 grid of resources/icon.svg: one source for every icon. */
-export function glyph(svg = readFileSync(join(ROOT, 'resources/icon.svg'), 'utf8')) {
-  const g = svg.match(/<g[^>]*>([\s\S]*?)<\/g>/)?.[1] || ''
-  return [...g.matchAll(/<rect\s+x="(\d+)"\s+y="(\d+)"\s+width="(\d+)"\s+height="(\d+)"/g)]
-    .map(m => m.slice(1, 5).map(Number))
+/** The open progress ring of resources/icon.svg: a stroked circle with one dash and one gap, round
+ *  caps, turned by its transform. Returns the arc as { cx, cy, r, hw, a0, span } (angles in
+ *  radians, clockwise on screen from 3 o'clock), or null for an icon without one. */
+export function ringOf(svg) {
+  const tag = svg.match(/<circle\b[^>]*stroke-dasharray="[^"]*"[^>]*>/)?.[0]
+  if (!tag) return null
+  const at = k => tag.match(new RegExp(`\\b${k}="([^"]*)"`))?.[1]
+  const [dash] = at('stroke-dasharray').split(/[\s,]+/).map(Number)
+  const r = Number(at('r'))
+  const rot = Number((at('transform') || '').match(/rotate\(\s*(-?[\d.]+)/)?.[1] || 0)
+  const cx = Number(at('cx')), cy = Number(at('cy')), hw = Number(at('stroke-width')) / 2
+  const a0 = rot * Math.PI / 180, span = dash / r
+  return {
+    cx, cy, r, hw, a0, span, hw2: hw * hw, inner2: (r - hw) ** 2, outer2: (r + hw) ** 2,
+    caps: [a0, a0 + span].map(a => [cx + r * Math.cos(a), cy + r * Math.sin(a)]),
+  }
 }
 
+/** Whether (x, y) in the 512 grid is on the ring, round caps included. Squared distances first:
+ *  this runs for every sample of every icon, and nearly all of them are far from the ring. */
+const onRing = (ring, x, y) => {
+  const dx = x - ring.cx, dy = y - ring.cy
+  const d2 = dx * dx + dy * dy
+  if (d2 >= ring.inner2 && d2 <= ring.outer2) {
+    const rel = (((Math.atan2(dy, dx) - ring.a0) % TAU) + TAU) % TAU
+    if (rel <= ring.span) return true
+  }
+  if (d2 > ring.outer2) return false
+  for (const [cx, cy] of ring.caps) {
+    const ex = x - cx, ey = y - cy
+    if (ex * ex + ey * ey <= ring.hw2) return true
+  }
+  return false
+}
+
+/** The glyph's rectangles, in the 512 grid of resources/icon.svg: one source for every icon. The
+ *  array also carries `.ring`, the open ring around them (ringOf). */
+export function glyph(svg = readFileSync(join(ROOT, 'resources/icon.svg'), 'utf8')) {
+  const g = svg.match(/<g[^>]*>([\s\S]*?)<\/g>/)?.[1] || ''
+  const rects = [...g.matchAll(/<rect\s+x="(\d+)"\s+y="(\d+)"\s+width="(\d+)"\s+height="(\d+)"/g)]
+    .map(m => m.slice(1, 5).map(Number))
+  rects.ring = ringOf(svg)
+  return rects
+}
+
+const TAU = 2 * Math.PI
 const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
 
 /** One icon `size` px square: the background, the glyph on it, optionally cut to a circle. */
@@ -68,6 +107,7 @@ export function draw(v, size, { round = false, rects = glyph() } = {}) {
         }
         inside++
         const gx = px * scale
+        if (rects.ring && onRing(rects.ring, gx, py * scale)) { on++; continue }
         for (const [a, b] of row) if (gx >= a && gx < b) { on++; break }
       }
     }
@@ -217,14 +257,19 @@ export function pngInfo(buf) {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), alpha: buf[25] === 6 || buf[25] === 4 }
 }
 
-const svgOf = (v, rects) => `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512">
-  <!-- openGym app icon "${v.id}", written by scripts/app-icons.mjs (the glyph of resources/icon.svg). -->
+const svgOf = (v, rects) => {
+  const r = rects.ring
+  const ring = r ? `  <circle cx="${r.cx}" cy="${r.cy}" r="${r.r}" fill="none" stroke="${v.fg}" stroke-width="${r.hw * 2}" stroke-linecap="round"
+          stroke-dasharray="${Math.round(r.span * r.r)} ${Math.round(2 * Math.PI * r.r - r.span * r.r)}" transform="rotate(${Math.round(r.a0 * 180 / Math.PI)} ${r.cx} ${r.cy})"/>\n` : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512">
+  <!-- IronLog app icon "${v.id}", written by scripts/app-icons.mjs (the glyph of resources/icon.svg). -->
   <rect width="512" height="512" fill="${v.bg}"/>
-  <g fill="${v.fg}">
+${ring}  <g fill="${v.fg}">
 ${rects.map(([x, y, w, h]) => `    <rect x="${x}" y="${y}" width="${w}" height="${h}"/>`).join('\n')}
   </g>
 </svg>
 `
+}
 
 // The same layers as the default icon's (mipmap-anydpi-v26/ic_launcher.xml): the whole square icon
 // as the foreground, inset to the 72 dp the launcher's mask shows, so every variant sits exactly
