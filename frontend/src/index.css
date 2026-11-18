@@ -3411,7 +3411,7 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .en-row{display:flex;gap:8px}
 .en-row .en-field{flex:1;min-width:0}
 .en-field{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-footnote);color:var(--label-2)}
-.en-field .field{height:40px;border-radius:12px;padding-inline:12px}
+.en-field .field{height:40px;border-radius:12px;padding-inline:12px;padding-block:0;background:var(--surface-2)}
 
 /* The precise log (components/EnergyCard.jsx Precision): the invitation, then meal by meal with today's weight. */
 .en-cta{display:flex;flex-direction:column;gap:3px;width:100%;margin-top:12px;padding:14px 16px;border-radius:16px;text-align:start;background:var(--acc-soft);color:var(--label)}
